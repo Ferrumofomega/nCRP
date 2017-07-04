@@ -1,0 +1,137 @@
+\section{Appendix - Church Code}
+    \subsection{Grape Decisions}
+
+      \subparagraph{Grapes Decision w/ No Observations}
+      \label{subp:grape_1}
+      \begin{lstlisting}
+      ;;; CONSTRUCTORS AND SELECTORS
+
+      (define (get-prototype-shape-distribution prototype)
+        (first prototype))
+
+      (define (get-prototype-taste-distribution prototype)
+        (second prototype))
+
+      (define (get-prototype-color-distribution prototype)
+        (third prototype))
+
+      (define (get-food-shape food)
+        (first food))
+
+      (define (get-food-taste food)
+        (second food))
+
+      (define (get-food-color food)
+        (third food))
+
+      ;;;
+
+      (define shape '(grape-shaped broccoli-shaped))
+      (define taste '(fruity veggie))
+      (define color '(green red yellow))
+
+
+      (define (generate-food-prototype)
+        (list
+         (dirichlet '(0.1 0.1)) ; shape
+         (dirichlet '(0.1 0.1)) ; taste
+         (dirichlet '(0.33 0.33 0.33)))) ; color
+
+      (define (generate-food-from-prototype prototype)
+        (list
+         (multinomial shape (get-prototype-shape-distribution prototype)) ; shape
+         (multinomial taste (get-prototype-taste-distribution prototype)) ; taste
+         (multinomial color (get-prototype-color-distribution prototype)) ; color
+         ))
+
+      (define samples
+        (mh-query
+         1000 100
+
+         (define broccoli-prototype (generate-food-prototype))
+         (define grape-prototype (generate-food-prototype))
+
+         (define green-grape (generate-food-from-prototype grape-prototype))
+         (define red-grape (generate-food-from-prototype grape-prototype))
+         (define yellow-grape (generate-food-from-prototype grape-prototype))
+
+         ; query
+         (get-food-taste yellow-grape)
+
+         ; condition
+         #t
+         ;;    (equal? (get-food-taste green-grape) 'fruity )
+         ))
+
+      (hist samples "Taste of the Yellow Grape W/No Observations")
+    \end{lstlisting}
+    % subparagraph subp:grape_1 (end)
+
+      \subsection{Agent Rationality Decisions}
+      \label{subs:integral}
+
+      \subsection{Appendix - Code}
+      \label{subs:code_appendix}
+        \subparagraph{Code for Andy's decision}
+        %(fold)
+
+        \label{subp:code_1}
+          \begin{lstlisting}
+            ;;THE GOLD OR THE TIGER
+
+            ;; AGENT CONSTRUCTOR
+            (define (make-agent name goal)
+              (list name goal))
+
+            (define (get-agent-name agent) (first agent))
+            (define (get-agent-goal agent) (second agent))
+
+            ;; GOAL PREDICATE
+            (define goal (uniform-draw '(gold tiger)))
+
+            ;; AGENT
+            (define Andy (make-agent 'Andy 'gold))
+
+
+            ;; STATES
+            ;; Andy with a choice between two doors - one with the tiger behind it, and one with the gold behind it.
+            (define (door-contains action)
+              (case action
+                (('open-door-1) (multinomial '(gold tiger) '(1 0)))
+                (('open-door-2) (multinomial '(gold tiger) '(0 1)))
+                (else 'nothing))
+              )
+
+            ;; softmax_policy
+            (define (softmax utility b)
+              (sample-discrete (normalize (map (lambda (x) (exp (* b x))) utility))))
+
+            (define (normalize lst)
+              (let ((lst-sum (sum lst)))
+                (map (lambda (x) (/ x lst-sum)) lst)))
+
+            (define (door-opeAndy action)
+             (if (equal? action 1) 'open-door-1 'open-door-2))
+
+            ;; FORWARD MODEL
+            (define (choose-action agent)
+              (mh-query
+               100 1
+               (define utility '(0 1)) //With Preference
+               ;;   (define utility '(.5 .5)) //Without Preference
+               (define utility_exp '(.5 .5))
+               (define beta '4)
+
+               (define action (softmax utility_exp beta))
+               (define door-picked (door-opeAndy action))
+               (define outcome (door-contains door-picked))
+
+               (list door-picked outcome action)))
+
+            (choose-action Andy)
+            ;; DISPLAY
+            (hist (map first (choose-action Andy)) "Door Andy Chose")
+            (hist (map second (choose-action Andy)) "Result")
+            (hist (map third (choose-action Andy)) "Utility of Choice")
+          \end{lstlisting}
+      % subparagraph code_appendix (end)
