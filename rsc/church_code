@@ -1,137 +1,173 @@
-\section{Appendix - Church Code}
-    \subsection{Grape Decisions}
+## GRAPES
+;;Non-Parametric Models of Food Knowledge
+;; getters
+(define (get-food prototype)
+  prototype)
+(define (get-shape-distribution prototype)
+  (first prototype))
+(define (get-color-distribution prototype)
+  (second prototype))
+(define (get-taste-distributions prototype)
+  (third prototype))
 
-      \subparagraph{Grapes Decision w/ No Observations}
-      \label{subp:grape_1}
-      \begin{lstlisting}
-      ;;; CONSTRUCTORS AND SELECTORS
+(define (get-sourness-distribution prototype)
+  (first (get-taste-distributions prototype)))
+(define (get-sweetness-distribution prototype)
+  (second (get-taste-distributions prototype)))
+(define (get-saltiness-distribution prototype)
+  (third (get-taste-distributions prototype)))
+(define (get-umaminess-distribution prototype)
+  (fourth (get-taste-distributions prototype)))
+(define (get-bitterness-distribution prototype)
+  (fifth (get-taste-distributions prototype)))
 
-      (define (get-prototype-shape-distribution prototype)
-        (first prototype))
+(define (get-food-shape food)
+  (first food))
+(define (get-food-color food)
+  (second food))
+(define (get-food-taste food)
+  (third food))
+(define (get-food-sourness food)
+  (first (third food)))
+(define (get-food-sweetness food)
+  (second (third food)))
+(define (get-food-saltiness food)
+  (third (third food)))
+(define (get-food-umaminess food)
+  (fourth (third food)))
+(define (get-food-bitterness food)
+(fifth (third food)))
 
-      (define (get-prototype-taste-distribution prototype)
-        (second prototype))
+(define samples
+ (mh-query
+   1000 10
+  ;; MODEL BEGIN
+  
+  ;; Food feature space - A food is composed of a shape, a color, and a taste vector
+  (define shape '(grape-shaped apple-shaped carrot-shaped broccoli-shaped))
+  (define color '(green red yellow orange))
+  (define taste 
+    (list 
+     '(#t #f) ;; food sweetness
+     '(#t #f) ;; food sourness
+     '(#t #f) ;; food saltiness
+     '(#t #f) ;; food umaminess
+     '(#t #f) ;; food bitterness
+     ))
+  
+  ;; This creates the nCRP categorization portion of the model
+  (define food-category-gensym (make-gensym "cat"))
+  (define food-sub-category-gensym (make-gensym "sub-cat"))
+  (define food-instance-gensym (make-gensym "instance"))
+  
+  (define get-food-category-gensym 
+    (DPmem 0.5 food-category-gensym)
+    )
+  (define get-food-sub-category-gensym
+    (DPmem 0.5
+           (lambda (parent-category)
+             (list (food-sub-category-gensym) parent-category)
+             )))
+  (define get-food-instance-gensym
+    (DPmem 2.0
+           (lambda (parent-category)
+             (list (food-instance-gensym) parent-category)
+             )))
+  
+  ;; The following takes in a food object and returns a nested set of categorizations.
+  (define obs->categorization
+     (mem (lambda (food-instance-name)
+           (get-food-instance-gensym (get-food-sub-category-gensym (get-food-category-gensym)))
+            )))
+  
+  ;; These are the food hyperparameters
+  (define food '(.1 1 .5))
+    
+  ;; These are the food category distributions (i.e. that which is common to fruits or vegetables)
+  (define food-category 
+     (mem (lambda (category)
+     (list
+      (dirichlet (make-list (length shape) (first food)))
+      (dirichlet (make-list (length color) (second food)))
+      (list
+       (beta (third food)  (third food))
+       (beta (third food)  (third food))
+       (beta (third food)  (third food))
+       (beta (third food)  (third food))
+       (beta (third food)  (third food))
+       )))))
 
-      (define (get-prototype-color-distribution prototype)
-        (third prototype))
+  ;; These are the food sub-category distributions (i.e. that which is common to grapes or broccoli or carrots)
+  (define food-sub-category
+     (mem (lambda (category)
+     (define cat-params (food-category (second category)))
+     (list 
+      (dirichlet (get-shape-distribution cat-params)) 
+      (dirichlet (get-color-distribution cat-params))
+      (list
+         (if (flip .99 ) (get-sourness-distribution cat-params)  (- 1 (get-sourness-distribution cat-params))) 
+         (if (flip .99 ) (get-sweetness-distribution cat-params) (- 1 (get-sweetness-distribution cat-params)))
+         (if (flip .99 ) (get-saltiness-distribution cat-params) (- 1 (get-saltiness-distribution cat-params)))
+         (if (flip .99 ) (get-umaminess-distribution cat-params) (- 1 (get-umaminess-distribution cat-params)))
+         (if (flip .99 ) (get-bitterness-distribution cat-params) (- 1 (get-bitterness-distribution cat-params)))
+         )))))
+  
+   ;;These are the food observations (i. e. that which is common to a green-grape or yellow-carrot)
+   (define try-food-instance
+     (mem (lambda (category)
+           (define sub-cat-params (food-sub-category (second category)))
+           (list
+            (multinomial shape (get-shape-distribution sub-cat-params))
+            (multinomial color (get-color-distribution sub-cat-params))
+            (list
+             (if (flip (get-sourness-distribution sub-cat-params)) (first (first taste)) (second (first taste))) ;sourness
+             (if (flip (get-sweetness-distribution sub-cat-params)) (first (second taste)) (second (second taste))) ;sweetness
+             (if (flip (get-saltiness-distribution sub-cat-params))  (first (third taste)) (second (third taste))) ;saltiness
+             (if (flip (get-umaminess-distribution sub-cat-params)) (first (fourth taste)) (second (fourth taste))) ;umaminess
+             (if (flip (get-bitterness-distribution sub-cat-params))  (first (fifth taste)) (second (fifth taste))) ; bitterness
+             )))))
+  
+  (define green-grape (try-food-instance (obs->categorization "green-grapes")))
+  (define yellow-grape (try-food-instance (obs->categorization "yellow-grapes")))
+  (define green-broccoli (try-food-instance (obs->categorization "green-brocolli")))
+  
+  (define (sum list)
+    (if
+     (null? list)
+     0
+     (+ (car list) (sum (cdr list)))))
+  
+  (define (utility grape food)
+    (define util 0)
+    (define compare-taste (list
+    (if (equal? (get-sourness-distribution grape) (get-sourness-distribution food)) 1 0) 
+    (if (equal? (get-sweetness-distribution grape) (get-sourness-distribution food)) 1 0)
+    (if (equal? (get-saltiness-distribution grape) (get-saltiness-distribution food)) 1 0)
+    (if (equal? (get-umaminess-distribution grape) (get-umaminess-distribution food)) 1 0)
+    (if (equal? (get-bitterness-distribution grape) (get-bitterness-distribution food)) 1 0)))
+    (sum compare-taste))
 
-      (define (get-food-shape food)
-        (first food))
-
-      (define (get-food-taste food)
-        (second food))
-
-      (define (get-food-color food)
-        (third food))
-
-      ;;;
-
-      (define shape '(grape-shaped broccoli-shaped))
-      (define taste '(fruity veggie))
-      (define color '(green red yellow))
-
-
-      (define (generate-food-prototype)
-        (list
-         (dirichlet '(0.1 0.1)) ; shape
-         (dirichlet '(0.1 0.1)) ; taste
-         (dirichlet '(0.33 0.33 0.33)))) ; color
-
-      (define (generate-food-from-prototype prototype)
-        (list
-         (multinomial shape (get-prototype-shape-distribution prototype)) ; shape
-         (multinomial taste (get-prototype-taste-distribution prototype)) ; taste
-         (multinomial color (get-prototype-color-distribution prototype)) ; color
-         ))
-
-      (define samples
-        (mh-query
-         1000 100
-
-         (define broccoli-prototype (generate-food-prototype))
-         (define grape-prototype (generate-food-prototype))
-
-         (define green-grape (generate-food-from-prototype grape-prototype))
-         (define red-grape (generate-food-from-prototype grape-prototype))
-         (define yellow-grape (generate-food-from-prototype grape-prototype))
-
-         ; query
-         (get-food-taste yellow-grape)
-
-         ; condition
-         #t
-         ;;    (equal? (get-food-taste green-grape) 'fruity )
-         ))
-
-      (hist samples "Taste of the Yellow Grape W/No Observations")
-    \end{lstlisting}
-    % subparagraph subp:grape_1 (end)
-
-      \subsection{Agent Rationality Decisions}
-      \label{subs:integral}
-
-      \subsection{Appendix - Code}
-      \label{subs:code_appendix}
-        \subparagraph{Code for Andy's decision}
-        %(fold)
-
-        \label{subp:code_1}
-          \begin{lstlisting}
-            ;;THE GOLD OR THE TIGER
-
-            ;; AGENT CONSTRUCTOR
-            (define (make-agent name goal)
-              (list name goal))
-
-            (define (get-agent-name agent) (first agent))
-            (define (get-agent-goal agent) (second agent))
-
-            ;; GOAL PREDICATE
-            (define goal (uniform-draw '(gold tiger)))
-
-            ;; AGENT
-            (define Andy (make-agent 'Andy 'gold))
+  ;; MODEL END
+  ;;QUERY did yellow-grape and green-grape come from the food sub-type?
+   (list (obs->categorization "green-grapes") 
+         (obs->categorization "green-broccoli")
+         (obs->categorization "yellow-grapes")
+         (utility green-grape yellow-grape)
+         (utility green-grape green-broccoli)
+         )
+         
+  
+  ;; CONDITION
+  (and (equal? (get-food-shape green-grape) (get-food-shape yellow-grape))
+       (equal? (get-food-color yellow-grape) (get-food-color green-broccoli))
+       (not (equal? (second (second (obs->categorization "green-grapes")))  (second (second (obs->categorization "green-broccoli")
+                                                                                            ))))
+       (not (equal? (get-food-shape green-grape) (get-food-shape green-broccoli)))
+       (not (equal? (get-food-sourness green-grape) (get-food-sourness green-broccoli)))
+       (not (equal? (get-food-sweetness green-grape) (get-food-sweetness green-broccoli)))
+       (not (equal? (get-food-umaminess green-grape) (get-food-umaminess green-broccoli)))
+  )))
 
 
-            ;; STATES
-            ;; Andy with a choice between two doors - one with the tiger behind it, and one with the gold behind it.
-            (define (door-contains action)
-              (case action
-                (('open-door-1) (multinomial '(gold tiger) '(1 0)))
-                (('open-door-2) (multinomial '(gold tiger) '(0 1)))
-                (else 'nothing))
-              )
+samples
 
-            ;; softmax_policy
-            (define (softmax utility b)
-              (sample-discrete (normalize (map (lambda (x) (exp (* b x))) utility))))
-
-            (define (normalize lst)
-              (let ((lst-sum (sum lst)))
-                (map (lambda (x) (/ x lst-sum)) lst)))
-
-            (define (door-opeAndy action)
-             (if (equal? action 1) 'open-door-1 'open-door-2))
-
-            ;; FORWARD MODEL
-            (define (choose-action agent)
-              (mh-query
-               100 1
-               (define utility '(0 1)) //With Preference
-               ;;   (define utility '(.5 .5)) //Without Preference
-               (define utility_exp '(.5 .5))
-               (define beta '4)
-
-               (define action (softmax utility_exp beta))
-               (define door-picked (door-opeAndy action))
-               (define outcome (door-contains door-picked))
-
-               (list door-picked outcome action)))
-
-            (choose-action Andy)
-            ;; DISPLAY
-            (hist (map first (choose-action Andy)) "Door Andy Chose")
-            (hist (map second (choose-action Andy)) "Result")
-            (hist (map third (choose-action Andy)) "Utility of Choice")
-          \end{lstlisting}
-      % subparagraph code_appendix (end)

@@ -1,18 +1,34 @@
+"""
+Dirichlet-Categorical Model extended to a nCRP
+Posterior inference with Edward's BBVI.
+"""
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
-
-x_train = np.linspace(-3, 3, num=50)
-y_train = np.cos(x_train) + np.random.normal(0, 0.1, size=50)
-x_train = x_train.astype(np.float32).reshape((50, 1))
-y_train = y_train.astype(np.float32).reshape((50, 1))
-
 import tensorflow as tf
-from edward.models import Normal
+import edward
+from edward.models import Categorical, Dirichlet
 
-W_0 = Normal(loc=tf.zeros([1, 2]), scale=tf.ones([1, 2]))
-W_1 = Normal(loc=tf.zeros([2, 1]), scale=tf.ones([2, 1]))
-b_0 = Normal(loc=tf.zeros(2), scale=tf.ones(2))
-b_1 = Normal(loc=tf.zeros(1), scale=tf.ones(1))
+N = 1000
+K = 4
 
-x = x_train
-y = Normal(loc=tf.matmul(tf.tanh(tf.matmul(x, W_0) + b_0), W_1) + b_1,
-           scale=0.1)
+# DATA
+pi_true = np.random.dirichlet(np.array([20.0, 30.0, 10.0, 10.0]))
+z_data = np.array([np.random.choice(K, 1, p=pi_true)[0] for n in range(N)])
+print('pi={}'.format(pi_true))
+
+# MODEL
+pi = Dirichlet(tf.ones(4))
+z = Categorical(probs=tf.ones([N, 1]) * pi)
+
+# INFERENCE
+qpi = Dirichlet(tf.nn.softplus(tf.Variable(tf.random_normal([K]))))
+
+inference = edward.KLqp({pi: qpi}, data={z: z_data})
+inference.run(n_iter=1500, n_samples=30)
+
+sess = edward.get_session()
+print('Inferred pi={}'.format(sess.run(qpi.mean())))
