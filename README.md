@@ -1,7 +1,7 @@
 # nCRP
 This is a repository and tutorial for the nested Chinese Restaurant process (https://github.com/Ferrumofomega/nCRP.git).
 
-This model is implemented using Edward (http://edwardlib.org/).
+This model is inspired by Blei 2010 (https://cocosci.berkeley.edu/tom/papers/ncrp.pdf) and implemented using Edward (http://edwardlib.org/).
 
 This nCRP was used to model decision making using structured uncertainty in an OUP volumne on Transformational Experience.
 
